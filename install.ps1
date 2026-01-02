@@ -180,7 +180,7 @@ function Get-ReleaseInfo {
     }
 }
 
-# Download with progress bar
+# Download with progress updates
 function Get-FileWithProgress {
     param(
         [string]$Url,
@@ -198,43 +198,37 @@ function Get-FileWithProgress {
         
         $response = $request.GetResponse()
         $totalBytes = $response.ContentLength
+        $totalMB = [math]::Round($totalBytes / 1MB, 2)
         $responseStream = $response.GetResponseStream()
         
+        Write-ColorOutput "  Total size: $totalMB MB" "Gray"
+        
         $fileStream = [System.IO.File]::Create($Destination)
-        $buffer = New-Object byte[] 8192
+        $buffer = New-Object byte[] 32768  # 32KB chunks
         $totalBytesRead = 0
         $readCount = 0
-        $lastUpdate = [DateTime]::Now
         $startTime = [DateTime]::Now
+        $lastReportPercent = 0
         
         do {
             $readCount = $responseStream.Read($buffer, 0, $buffer.Length)
             $fileStream.Write($buffer, 0, $readCount)
             $totalBytesRead += $readCount
             
-            # Update progress every 200ms to reduce flicker
-            $now = [DateTime]::Now
-            if (($now - $lastUpdate).TotalMilliseconds -gt 200 -and $totalBytes -gt 0) {
-                $percent = [math]::Round(($totalBytesRead / $totalBytes) * 100, 1)
-                $downloadedMB = [math]::Round($totalBytesRead / 1MB, 2)
-                $totalMB = [math]::Round($totalBytes / 1MB, 2)
+            # Report progress every 10%
+            if ($totalBytes -gt 0) {
+                $percent = [math]::Floor(($totalBytesRead / $totalBytes) * 100)
                 
-                # Calculate speed
-                $elapsed = ($now - $startTime).TotalSeconds
-                $speed = if ($elapsed -gt 0) {
-                    [math]::Round($totalBytesRead / 1MB / $elapsed, 2)
-                } else { 0 }
-                
-                # Create progress bar (40 characters wide)
-                $barWidth = 40
-                $filledWidth = [math]::Floor($barWidth * $percent / 100)
-                $emptyWidth = $barWidth - $filledWidth
-                $bar = ("[" + ("█" * $filledWidth) + ("░" * $emptyWidth) + "]")
-                
-                # Write progress on same line
-                Write-Host "`r  $bar $percent% | $downloadedMB / $totalMB MB | $speed MB/s" -NoNewline -ForegroundColor Cyan
-                
-                $lastUpdate = $now
+                if ($percent -ge $lastReportPercent + 10 -and $percent -le 100) {
+                    $downloadedMB = [math]::Round($totalBytesRead / 1MB, 2)
+                    $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
+                    $speed = if ($elapsed -gt 0) {
+                        [math]::Round($totalBytesRead / 1MB / $elapsed, 2)
+                    } else { 0 }
+                    
+                    Write-ColorOutput "  Progress: $percent% ($downloadedMB MB) - $speed MB/s" "Cyan"
+                    $lastReportPercent = $percent
+                }
             }
         } while ($readCount -gt 0)
         
@@ -242,18 +236,14 @@ function Get-FileWithProgress {
         $responseStream.Close()
         $response.Close()
         
-        # Final progress bar at 100%
-        $totalMB = [math]::Round($totalBytes / 1MB, 2)
+        # Final stats
         $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
         $avgSpeed = if ($elapsed -gt 0) { [math]::Round($totalBytes / 1MB / $elapsed, 2) } else { 0 }
-        $bar = ("[" + ("█" * 40) + "]")
-        Write-Host "`r  $bar 100% | $totalMB / $totalMB MB | $avgSpeed MB/s" -ForegroundColor Cyan
+        Write-ColorOutput "  Completed: $totalMB MB in $([math]::Round($elapsed, 1))s (avg: $avgSpeed MB/s)" "Cyan"
         
-        Write-Host ""  # New line
         Write-Success "Download completed"
         
     } catch {
-        Write-Host ""  # New line to clear progress
         Write-ErrorMsg "Download failed: $_"
         
         # Clean up partial download
