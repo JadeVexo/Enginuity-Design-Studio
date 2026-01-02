@@ -189,6 +189,7 @@ function Get-FileWithProgress {
     )
     
     Write-Step "Downloading $FileName..."
+    Write-Host ""  # Add blank line for progress bar space
     
     try {
         # Use Invoke-WebRequest with progress
@@ -207,20 +208,31 @@ function Get-FileWithProgress {
         $buffer = New-Object byte[] 8192
         $totalBytesRead = 0
         $readCount = 0
+        $lastUpdate = [DateTime]::Now
         
         do {
             $readCount = $responseStream.Read($buffer, 0, $buffer.Length)
             $fileStream.Write($buffer, 0, $readCount)
             $totalBytesRead += $readCount
             
-            if ($totalBytes -gt 0) {
+            # Only update progress every 100ms to reduce flicker
+            $now = [DateTime]::Now
+            if (($now - $lastUpdate).TotalMilliseconds -gt 100 -and $totalBytes -gt 0) {
                 $percent = [math]::Round(($totalBytesRead / $totalBytes) * 100, 2)
                 $downloadedMB = [math]::Round($totalBytesRead / 1MB, 2)
                 $totalMB = [math]::Round($totalBytes / 1MB, 2)
                 
+                # Calculate speed
+                $speed = if ($totalBytesRead -gt 0) {
+                    [math]::Round($totalBytesRead / 1MB / ($now - $lastUpdate).TotalSeconds, 2)
+                } else { 0 }
+                
                 Write-Progress -Activity "Downloading $FileName" `
-                              -Status "$downloadedMB MB / $totalMB MB" `
-                              -PercentComplete $percent
+                              -Status "$downloadedMB MB / $totalMB MB ($speed MB/s)" `
+                              -PercentComplete $percent `
+                              -Id 1
+                              
+                $lastUpdate = $now
             }
         } while ($readCount -gt 0)
         
@@ -228,10 +240,11 @@ function Get-FileWithProgress {
         $responseStream.Close()
         $response.Close()
         
-        Write-Progress -Activity "Downloading $FileName" -Completed
+        Write-Progress -Activity "Downloading $FileName" -Completed -Id 1
         Write-Success "Download completed"
         
     } catch {
+        Write-Progress -Activity "Downloading $FileName" -Completed -Id 1
         Write-ErrorMsg "Download failed: $_"
         
         # Clean up partial download
