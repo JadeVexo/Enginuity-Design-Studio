@@ -226,14 +226,14 @@ function Get-FileWithProgress {
             $now = [DateTime]::Now
             if (($now - $lastUpdate).TotalMilliseconds -gt 200 -and $totalBytes -gt 0) {
                 $percent = [math]::Round(($totalBytesRead / $totalBytes) * 100, 1)
-                $downloadedMB = [math]::Round($totalBytesRead / 1MB, 2)
-                $totalMB = [math]::Round($totalBytes / 1MB, 2)
+                $downloadedMB = ($totalBytesRead / 1MB).ToString("F2")
+                $totalMB = ($totalBytes / 1MB).ToString("F2")
                 
                 # Calculate speed
                 $elapsed = ($now - $startTime).TotalSeconds
                 $speed = if ($elapsed -gt 0) {
-                    [math]::Round($totalBytesRead / 1MB / $elapsed, 2)
-                } else { 0 }
+                    ($totalBytesRead / 1MB / $elapsed).ToString("F2")
+                } else { "0.00" }
                 
                 # Create progress bar (40 characters wide)
                 $barWidth = 40
@@ -253,9 +253,9 @@ function Get-FileWithProgress {
         $response.Close()
         
         # Final progress bar at 100%
-        $totalMB = [math]::Round($totalBytes / 1MB, 2)
+        $totalMB = ($totalBytes / 1MB).ToString("F2")
         $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
-        $avgSpeed = if ($elapsed -gt 0) { [math]::Round($totalBytes / 1MB / $elapsed, 2) } else { 0 }
+        $avgSpeed = if ($elapsed -gt 0) { ($totalBytes / 1MB / $elapsed).ToString("F2") } else { "0.00" }
         $bar = ("[" + ("█" * 40) + "]")
         Write-Host "`r  $bar 100% | $totalMB / $totalMB MB | $avgSpeed MB/s" -ForegroundColor Cyan
         
