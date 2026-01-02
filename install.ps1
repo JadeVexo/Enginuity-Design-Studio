@@ -533,7 +533,7 @@ Write-Host "✓ Uninstallation completed!" -ForegroundColor Green
 
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║
-║     ✓ $modeText Completed Successfully!           ║
+║     ✓ $modeText Completed Successfully!        ║
 ║                                                   ║
 ╚═══════════════════════════════════════════════════╝
 
