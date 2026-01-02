@@ -3,7 +3,6 @@
 > AI-Powered Design Automation Platform for CAD, PCB Design, and Simulations
 
 [![Latest Release](https://img.shields.io/github/v/release/JadeVexo/Enginuity-Design-Studio)](https://github.com/JadeVexo/Enginuity-Design-Studio/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/JadeVexo/Enginuity-Design-Studio/total)](https://github.com/JadeVexo/Enginuity-Design-Studio/releases)
 
 ## 🚀 Quick Install (Windows)
 
