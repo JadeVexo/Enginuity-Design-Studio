@@ -70,8 +70,7 @@ function Show-Banner {
 ║                                         Agent Driven Hardware Design                                           ║
 ║                                                                                                                ║
 ║                                                                                                                ║
-╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
-                                                        *                                                                                                                                                                        
+╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝                                                                                                                                                                      
 "@ "Cyan"
 }
 
@@ -168,7 +167,13 @@ function Get-ReleaseInfo {
             "User-Agent" = "EnginuityInstaller/1.0"
         }
         
-        $asset = $release.assets | Where-Object { $_.name -like "*Deploy*.zip" } | Select-Object -First 1
+        # Look for Windows x86 deployment package first, fallback to generic Deploy
+        $asset = $release.assets | Where-Object { $_.name -like "*Deploy*Windows*x86*.zip" } | Select-Object -First 1
+        
+        if (-not $asset) {
+            # Fallback to any Deploy zip (backward compatibility)
+            $asset = $release.assets | Where-Object { $_.name -like "*Deploy*.zip" } | Select-Object -First 1
+        }
         
         if (-not $asset) {
             throw "No deployment package found in release"
@@ -347,8 +352,14 @@ function Install-Enginuity {
         $extractPath = Join-Path $tempDir "extracted"
         Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
         
-        # Find the deploy directory (handles both folder structures)
-        $deployDir = Get-ChildItem -Path $extractPath -Filter "Enginuity_Deploy_*" -Directory | Select-Object -First 1
+        # Find the deploy directory (handles multiple naming conventions)
+        # Try Windows x86 specific first
+        $deployDir = Get-ChildItem -Path $extractPath -Filter "*Deploy*Windows*x86*" -Directory | Select-Object -First 1
+        
+        if (-not $deployDir) {
+            # Fallback to generic Deploy folder (backward compatibility)
+            $deployDir = Get-ChildItem -Path $extractPath -Filter "Enginuity_Deploy_*" -Directory | Select-Object -First 1
+        }
         
         if (-not $deployDir) {
             # No folder found - files might be at root level
@@ -363,7 +374,7 @@ function Install-Enginuity {
                     FullName = $extractPath
                 }
             } else {
-                throw "Deploy directory or required files not found in package. Expected structure:`n  - Enginuity_Deploy_vX.X.X.X/ (folder), OR`n  - enginuity_launcher.exe, server/, enginuity_design_studio/ at root"
+                throw "Deploy directory or required files not found in package. Expected structure:`n  - Enginuity_Deploy_Windows_x86_vX.X.X.X/ (folder), OR`n  - Enginuity_Deploy_vX.X.X.X/ (folder), OR`n  - enginuity_launcher.exe, server/, enginuity_design_studio/ at root"
             }
         }
         
@@ -522,7 +533,7 @@ Write-Host "✓ Uninstallation completed!" -ForegroundColor Green
 
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║
-║     ✓ $modeText Completed Successfully!        ║
+║     ✓ $modeText Completed Successfully!           ║
 ║                                                   ║
 ╚═══════════════════════════════════════════════════╝
 
