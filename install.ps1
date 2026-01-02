@@ -99,7 +99,7 @@ function Show-Menu {
     if (-not $IsInstalled) {
         switch ($choice) {
             "1" { return "install" }
-            "2" { exit 0 }
+            "2" { return "exit" }
             default { 
                 Write-ColorOutput "`n⚠ Invalid choice. Please try again." "Red"
                 Start-Sleep -Seconds 2
@@ -111,7 +111,7 @@ function Show-Menu {
             "1" { return "update" }
             "2" { return "repair" }
             "3" { return "uninstall" }
-            "4" { exit 0 }
+            "4" { return "exit" }
             default { 
                 Write-ColorOutput "`n⚠ Invalid choice. Please try again." "Red"
                 Start-Sleep -Seconds 2
@@ -368,26 +368,46 @@ function Install-Enginuity {
         # Create shortcuts
         Write-Step "Creating shortcuts..."
         
-        $WshShell = New-Object -ComObject WScript.Shell
-        
-        # Start Menu
-        $startMenuPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\$PRODUCT_NAME"
-        New-Item -ItemType Directory -Path $startMenuPath -Force | Out-Null
-        
-        $shortcut = $WshShell.CreateShortcut("$startMenuPath\$PRODUCT_NAME.lnk")
-        $shortcut.TargetPath = "$InstallPath\enginuity_launcher.exe"
-        $shortcut.WorkingDirectory = $InstallPath
-        $shortcut.Description = $PRODUCT_NAME
-        $shortcut.Save()
-        
-        # Desktop
-        $shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\$PRODUCT_NAME.lnk")
-        $shortcut.TargetPath = "$InstallPath\enginuity_launcher.exe"
-        $shortcut.WorkingDirectory = $InstallPath
-        $shortcut.Description = $PRODUCT_NAME
-        $shortcut.Save()
-        
-        Write-Success "Shortcuts created"
+        try {
+            $WshShell = New-Object -ComObject WScript.Shell
+            
+            # Start Menu
+            $startMenuPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\$PRODUCT_NAME"
+            New-Item -ItemType Directory -Path $startMenuPath -Force | Out-Null
+            
+            try {
+                $shortcut = $WshShell.CreateShortcut("$startMenuPath\$PRODUCT_NAME.lnk")
+                $shortcut.TargetPath = "$InstallPath\enginuity_launcher.exe"
+                $shortcut.WorkingDirectory = $InstallPath
+                $shortcut.Description = $PRODUCT_NAME
+                $shortcut.Save()
+                Write-ColorOutput "  Created Start Menu shortcut" "Gray"
+            } catch {
+                Write-ColorOutput "  Warning: Could not create Start Menu shortcut: $_" "Yellow"
+            }
+            
+            # Desktop shortcut
+            try {
+                $desktopPath = [Environment]::GetFolderPath("Desktop")
+                $shortcut = $WshShell.CreateShortcut("$desktopPath\$PRODUCT_NAME.lnk")
+                $shortcut.TargetPath = "$InstallPath\enginuity_launcher.exe"
+                $shortcut.WorkingDirectory = $InstallPath
+                $shortcut.Description = $PRODUCT_NAME
+                $shortcut.Save()
+                Write-ColorOutput "  Created Desktop shortcut" "Gray"
+            } catch {
+                Write-ColorOutput "  Warning: Could not create Desktop shortcut: $_" "Yellow"
+            }
+            
+            # Release COM object
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($WshShell) | Out-Null
+            
+            Write-Success "Shortcuts created"
+            
+        } catch {
+            Write-ColorOutput "⚠ Warning: Shortcut creation failed, but installation will continue." "Yellow"
+            Write-ColorOutput "  You can manually create shortcuts to: $InstallPath\enginuity_launcher.exe" "Gray"
+        }
         
         # Registry entries
         Write-Step "Registering application..."
@@ -450,8 +470,8 @@ Write-Host "✓ Uninstallation completed!" -ForegroundColor Green
         
     } catch {
         Write-ErrorMsg "Installation failed: $_"
-        Read-Host "`nPress Enter to exit"
-        exit 1
+        Read-Host "`nPress Enter to continue"
+        return
     } finally {
         # Cleanup
         Write-Step "Cleaning up..."
@@ -491,7 +511,7 @@ function Uninstall-Enginuity {
     
     if (-not (Test-Path $InstallPath)) {
         Write-ColorOutput "`n⚠ Enginuity Design Studio is not installed." "Yellow"
-        Read-Host "`nPress Enter to exit"
+        Read-Host "`nPress Enter to continue"
         return
     }
     
@@ -526,7 +546,10 @@ function Uninstall-Enginuity {
         # Remove shortcuts
         Write-Step "Removing shortcuts..."
         Remove-Item -Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\$PRODUCT_NAME" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "$env:USERPROFILE\Desktop\$PRODUCT_NAME.lnk" -Force -ErrorAction SilentlyContinue
+        
+        $desktopPath = [Environment]::GetFolderPath("Desktop")
+        Remove-Item -Path "$desktopPath\$PRODUCT_NAME.lnk" -Force -ErrorAction SilentlyContinue
+        
         Write-Success "Shortcuts removed"
         
         # Remove registry
@@ -553,11 +576,11 @@ function Uninstall-Enginuity {
         
     } catch {
         Write-ErrorMsg "Uninstallation failed: $_"
-        Read-Host "`nPress Enter to exit"
-        exit 1
+        Read-Host "`nPress Enter to continue"
+        return
     }
     
-    Read-Host "`nPress Enter to exit"
+    Read-Host "`nPress Enter to continue"
 }
 
 # Main execution
@@ -580,10 +603,13 @@ try {
             "update" { Install-Enginuity -Mode "update" }
             "repair" { Install-Enginuity -Mode "repair" }
             "uninstall" { Uninstall-Enginuity }
+            "exit" { 
+                Write-ColorOutput "`nGoodbye!" "Cyan"
+                return
+            }
         }
     }
 } catch {
     Write-ErrorMsg "`nAn unexpected error occurred: $_"
-    Read-Host "`nPress Enter to exit"
-    exit 1
+    Read-Host "`nPress Enter to continue"
 }
