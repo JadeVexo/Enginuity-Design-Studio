@@ -189,12 +189,8 @@ function Get-FileWithProgress {
     )
     
     Write-Step "Downloading $FileName..."
-    Write-Host ""  # Add blank line for progress bar space
     
     try {
-        # Use Invoke-WebRequest with progress
-        $ProgressPreference = 'Continue'
-        
         # Create a custom progress handler
         $request = [System.Net.HttpWebRequest]::Create($Url)
         $request.UserAgent = "EnginuityInstaller/1.0"
@@ -209,29 +205,35 @@ function Get-FileWithProgress {
         $totalBytesRead = 0
         $readCount = 0
         $lastUpdate = [DateTime]::Now
+        $startTime = [DateTime]::Now
         
         do {
             $readCount = $responseStream.Read($buffer, 0, $buffer.Length)
             $fileStream.Write($buffer, 0, $readCount)
             $totalBytesRead += $readCount
             
-            # Only update progress every 100ms to reduce flicker
+            # Update progress every 200ms to reduce flicker
             $now = [DateTime]::Now
-            if (($now - $lastUpdate).TotalMilliseconds -gt 100 -and $totalBytes -gt 0) {
-                $percent = [math]::Round(($totalBytesRead / $totalBytes) * 100, 2)
+            if (($now - $lastUpdate).TotalMilliseconds -gt 200 -and $totalBytes -gt 0) {
+                $percent = [math]::Round(($totalBytesRead / $totalBytes) * 100, 1)
                 $downloadedMB = [math]::Round($totalBytesRead / 1MB, 2)
                 $totalMB = [math]::Round($totalBytes / 1MB, 2)
                 
                 # Calculate speed
-                $speed = if ($totalBytesRead -gt 0) {
-                    [math]::Round($totalBytesRead / 1MB / ($now - $lastUpdate).TotalSeconds, 2)
+                $elapsed = ($now - $startTime).TotalSeconds
+                $speed = if ($elapsed -gt 0) {
+                    [math]::Round($totalBytesRead / 1MB / $elapsed, 2)
                 } else { 0 }
                 
-                Write-Progress -Activity "Downloading $FileName" `
-                              -Status "$downloadedMB MB / $totalMB MB ($speed MB/s)" `
-                              -PercentComplete $percent `
-                              -Id 1
-                              
+                # Create progress bar (40 characters wide)
+                $barWidth = 40
+                $filledWidth = [math]::Floor($barWidth * $percent / 100)
+                $emptyWidth = $barWidth - $filledWidth
+                $bar = ("[" + ("█" * $filledWidth) + ("░" * $emptyWidth) + "]")
+                
+                # Write progress on same line
+                Write-Host "`r  $bar $percent% | $downloadedMB / $totalMB MB | $speed MB/s" -NoNewline -ForegroundColor Cyan
+                
                 $lastUpdate = $now
             }
         } while ($readCount -gt 0)
@@ -240,11 +242,18 @@ function Get-FileWithProgress {
         $responseStream.Close()
         $response.Close()
         
-        Write-Progress -Activity "Downloading $FileName" -Completed -Id 1
+        # Final progress bar at 100%
+        $totalMB = [math]::Round($totalBytes / 1MB, 2)
+        $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
+        $avgSpeed = if ($elapsed -gt 0) { [math]::Round($totalBytes / 1MB / $elapsed, 2) } else { 0 }
+        $bar = ("[" + ("█" * 40) + "]")
+        Write-Host "`r  $bar 100% | $totalMB / $totalMB MB | $avgSpeed MB/s" -ForegroundColor Cyan
+        
+        Write-Host ""  # New line
         Write-Success "Download completed"
         
     } catch {
-        Write-Progress -Activity "Downloading $FileName" -Completed -Id 1
+        Write-Host ""  # New line to clear progress
         Write-ErrorMsg "Download failed: $_"
         
         # Clean up partial download
