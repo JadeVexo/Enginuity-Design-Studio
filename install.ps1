@@ -58,7 +58,7 @@ function Show-Banner {
     Write-ColorOutput @"
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║
-║       Enginuity Design Studio Installer           ║
+║       Enginuity Design Studio Installer          ║
 ║                  v1.0.0                           ║
 ║                                                   ║
 ╚═══════════════════════════════════════════════════╝
@@ -181,7 +181,7 @@ function Get-ReleaseInfo {
 }
 
 # Download with progress bar
-function Download-File {
+function Get-FileWithProgress {
     param(
         [string]$Url,
         [string]$Destination,
@@ -191,35 +191,54 @@ function Download-File {
     Write-Step "Downloading $FileName..."
     
     try {
-        $webClient = New-Object System.Net.WebClient
-        $webClient.Headers.Add("User-Agent", "EnginuityInstaller/1.0")
+        # Use Invoke-WebRequest with progress
+        $ProgressPreference = 'Continue'
         
-        # Register progress event
-        $progressId = Get-Random
-        Register-ObjectEvent -InputObject $webClient -EventName DownloadProgressChanged -SourceIdentifier "WebClient.Progress.$progressId" -Action {
-            $percent = $EventArgs.ProgressPercentage
-            $received = [math]::Round($EventArgs.BytesReceived / 1MB, 2)
-            $total = [math]::Round($EventArgs.TotalBytesToReceive / 1MB, 2)
+        # Create a custom progress handler
+        $request = [System.Net.HttpWebRequest]::Create($Url)
+        $request.UserAgent = "EnginuityInstaller/1.0"
+        $request.Method = "GET"
+        
+        $response = $request.GetResponse()
+        $totalBytes = $response.ContentLength
+        $responseStream = $response.GetResponseStream()
+        
+        $fileStream = [System.IO.File]::Create($Destination)
+        $buffer = New-Object byte[] 8192
+        $totalBytesRead = 0
+        $readCount = 0
+        
+        do {
+            $readCount = $responseStream.Read($buffer, 0, $buffer.Length)
+            $fileStream.Write($buffer, 0, $readCount)
+            $totalBytesRead += $readCount
             
-            Write-Progress -Activity "Downloading $using:FileName" `
-                           -Status "$received MB / $total MB" `
-                           -PercentComplete $percent `
-                           -Id $using:progressId
-        } | Out-Null
+            if ($totalBytes -gt 0) {
+                $percent = [math]::Round(($totalBytesRead / $totalBytes) * 100, 2)
+                $downloadedMB = [math]::Round($totalBytesRead / 1MB, 2)
+                $totalMB = [math]::Round($totalBytes / 1MB, 2)
+                
+                Write-Progress -Activity "Downloading $FileName" `
+                              -Status "$downloadedMB MB / $totalMB MB" `
+                              -PercentComplete $percent
+            }
+        } while ($readCount -gt 0)
         
-        # Download the file
-        $webClient.DownloadFile($Url, $Destination)
+        $fileStream.Close()
+        $responseStream.Close()
+        $response.Close()
         
-        # Clean up
-        Unregister-Event -SourceIdentifier "WebClient.Progress.$progressId" -ErrorAction SilentlyContinue
-        Write-Progress -Activity "Downloading $FileName" -Completed -Id $progressId
-        
-        $webClient.Dispose()
-        
+        Write-Progress -Activity "Downloading $FileName" -Completed
         Write-Success "Download completed"
         
     } catch {
         Write-ErrorMsg "Download failed: $_"
+        
+        # Clean up partial download
+        if (Test-Path $Destination) {
+            Remove-Item $Destination -Force -ErrorAction SilentlyContinue
+        }
+        
         throw
     }
 }
@@ -289,17 +308,31 @@ function Install-Enginuity {
     try {
         # Download package
         $zipPath = Join-Path $tempDir "enginuity_deploy.zip"
-        Download-File -Url $releaseInfo.DownloadUrl -Destination $zipPath -FileName $releaseInfo.FileName
+        Get-FileWithProgress -Url $releaseInfo.DownloadUrl -Destination $zipPath -FileName $releaseInfo.FileName
         
         # Extract package
         Write-Step "Extracting package..."
         $extractPath = Join-Path $tempDir "extracted"
         Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
         
-        # Find the deploy directory
+        # Find the deploy directory (handles both folder structures)
         $deployDir = Get-ChildItem -Path $extractPath -Filter "Enginuity_Deploy_*" -Directory | Select-Object -First 1
+        
         if (-not $deployDir) {
-            throw "Deploy directory not found in package"
+            # No folder found - files might be at root level
+            # Check if expected files exist at root
+            if ((Test-Path "$extractPath\enginuity_launcher.exe") -and 
+                (Test-Path "$extractPath\server") -and 
+                (Test-Path "$extractPath\enginuity_design_studio")) {
+                
+                Write-ColorOutput "  Using files from ZIP root..." "Gray"
+                # Create a pseudo deploy directory object
+                $deployDir = [PSCustomObject]@{
+                    FullName = $extractPath
+                }
+            } else {
+                throw "Deploy directory or required files not found in package. Expected structure:`n  - Enginuity_Deploy_vX.X.X.X/ (folder), OR`n  - enginuity_launcher.exe, server/, enginuity_design_studio/ at root"
+            }
         }
         
         Write-Success "Package extracted"
@@ -437,7 +470,7 @@ Write-Host "✓ Uninstallation completed!" -ForegroundColor Green
 
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║
-║     ✓ $modeText Completed Successfully!           ║
+║     ✓ $modeText Completed Successfully!        ║
 ║                                                   ║
 ╚═══════════════════════════════════════════════════╝
 
@@ -510,7 +543,7 @@ function Uninstall-Enginuity {
 
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║
-║     ✓ Uninstallation Completed Successfully!      ║
+║     ✓ Uninstallation Completed Successfully!     ║
 ║                                                   ║
 ╚═══════════════════════════════════════════════════╝
 
